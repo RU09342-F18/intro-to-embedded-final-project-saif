@@ -105,9 +105,10 @@ void wifi(int correct){
     else{
         //intruder
         P3OUT &= ~CORRECT;
-        char message[] = {35, 84, 101, 115, 116, 95, 84, 111, 112, 105, 99, 32, 73, 110, 116, 114, 117, 100, 101, 114, 10};
-         int i = 0;
-         unsigned int size = 22;
+        //char message[] = {35, 84, 101, 115, 116, 95, 84, 111, 112, 105, 99, 32, 73, 110, 116, 114, 117, 100, 101, 114, 10, 13};
+        char message[] = {73, 110, 116, 114, 117, 100, 101, 114, 10, 13};
+        int i = 0;
+         unsigned int size = 10;
          for(i = 0; i < size; i++){
              while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
              UCA1TXBUF = message[i];               //send out message
