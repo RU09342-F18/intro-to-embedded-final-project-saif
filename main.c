@@ -18,15 +18,19 @@
 #define BUTTON4 BIT5
 #define TRIGGER BIT0
 #define BUZZER BIT0
+#define CORRECT BIT1
 
 //global vars:
 unsigned int done_combination = 0;
-const unsigned int combination_key[5] = {1,2,3,2,3};
+const unsigned int combination_key[5] = {1,2,3,1,1};
 unsigned int combination[5] = {0};
 unsigned int combination_digits_entered = 0;
 unsigned int interrupt_edge[4] = {0};
 unsigned int num_of_interrupts = 0;
 unsigned int triggered = 0;
+unsigned int counter = 0;
+unsigned int timerdone = 1;
+
 
 
 //prototypes
@@ -45,6 +49,14 @@ int main(void)  //begin main function
     UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
     UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
 
+    //timer initialization************************************************************************
+      //using Timer A1
+      TA1CCTL1 = CCIE;                          // CCR interrupt enabled for TA1
+      TA1CCR0 = 62500;                            //Set the period in the Timer A CCR0 to
+      //TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON.
+                                                //It's initialized to half the time, which translates to a 50% duty cycle.
+
+
     P1REN |= BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;
 
     // IO:
@@ -52,13 +64,13 @@ int main(void)  //begin main function
     P1SEL &= ~(BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4);          //set as GPIO
     P1DIR &= ~(BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4);          //set as input
 
-    P3DIR |= (BUZZER);                                             // Set P1.0 (LED) to be an output
-    P3SEL &= ~(BUZZER);          //set as GPIO
+    P3DIR |= (BUZZER + CORRECT);                                             // Set P1.0 (LED) to be an output
+    P3SEL &= ~(BUZZER + CORRECT);          //set as GPIO
 
     P2SEL &= ~(TRIGGER);          //set as GPIO
     P2DIR &= ~(TRIGGER);          //set as input
 
-    P3OUT &= ~BUZZER;               //shut off buzzer
+    P3OUT &= ~(BUZZER + CORRECT);               //shut off buzzer
     P1OUT &= ~LED;                                              // shut off LED0
     P1IE |= BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;              // enable P1.3 interrupt
     P2IE |= TRIGGER;              // enable P2.0 interrupt
@@ -67,11 +79,6 @@ int main(void)  //begin main function
     P1IFG &= ~BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;            // clear the P1.3 interrupt flag
     P2IFG &= ~TRIGGER;
 
-    TA1CCTL1 = CCIE;                          // CCR1 interrupt enabled for TA1
-    TA1CCR0 = 262;                            //Set the period in the Timer A CCR0 to 1000 us.
-    TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON.
-                                               //It's initialized to half the time, which translates to a 50% duty cycle.
-    TA1CTL = TASSEL_2 + MC_1 + ID_2 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
 
 
     //__delay_cycles(100000);
@@ -89,20 +96,30 @@ void wifi(int correct){
     }
 
     //send notification
-    if(correct == 0){
-        //intruder alert
-        P1OUT ^= LED;
+    if(correct == 1){
+        //no intruder
+        P1OUT &= ~LED;
         correct = 0;
+        P3OUT |= CORRECT;
     }
     else{
         //intruder
-        char message[] = {35, 84, 101, 115, 116, 95, 84, 111, 112, 105, 99, 32, 73, 110, 116, 114, 117, 100, 101, 114, 92, 110};
+        P3OUT &= ~CORRECT;
+        char message[] = {35, 84, 101, 115, 116, 95, 84, 111, 112, 105, 99, 32, 73, 110, 116, 114, 117, 100, 101, 114, 10};
          int i = 0;
          unsigned int size = 22;
          for(i = 0; i < size; i++){
              while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
-             UCA1TXBUF = message[i];               //send out temp reading
+             UCA1TXBUF = message[i];               //send out message
          }
+         P3OUT |= BUZZER;
+         i = 0;
+         for(i = 0; i < 10; i++){
+             __delay_cycles(1000000);
+         }
+         //TA1CTL = TASSEL_2 + MC_1 + ID_3 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
+         //timerdone = 0;
+         //while(timerdone == 0); //wait for 10s timer to finish
     }
 
     P3OUT &= ~BUZZER;   //shut off buzzer after sending message of canceling sending message
@@ -110,13 +127,13 @@ void wifi(int correct){
     triggered = 0;
 }
 
-
+/*
 #pragma vector=PORT2_VECTOR
 __interrupt void Port_2(void)   //take care of interrupt coming from port 1
 {
     triggered = 1;
     P3OUT |= BUZZER;
-}
+}*/
 
 // Port 1 interrupt service routine
 #pragma vector=PORT1_VECTOR
@@ -125,9 +142,10 @@ __interrupt void Port_1(void)   //take care of interrupt coming from port 1
 
 
     //6: 1.2, 8:1.3, A:1.4, C:1.5
-    __delay_cycles(1000);
+    __delay_cycles(2000);
     /*++num_of_interrupts;
     if(num_of_interrupts > 1){*/
+
     switch(P1IV){
     case 0x000C:
         P1IE &= ~BUTTON4;                     //disable port 1 interrupts (button won't cause interrupt)
@@ -176,7 +194,7 @@ __interrupt void Port_1(void)   //take care of interrupt coming from port 1
 
     unsigned int digits_correct = 0;
 
-    if(triggered ==1)
+    if(triggered == 1 && P1IV != 0x000C && combination[combination_digits_entered] != 0)
         ++combination_digits_entered;
 
     if(combination_digits_entered == 5){
@@ -194,10 +212,6 @@ __interrupt void Port_1(void)   //take care of interrupt coming from port 1
         combination_digits_entered = 0;
         wifi(correct);
     }
-
-
-
-
 
 }
 
@@ -221,7 +235,16 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
         case  8: break;                          // reserved
         case 10: break;                          // reserved
         case 12: break;                          // reserved
-        case 14:                  // if CCR0 overflows, set output high
+        case 14:                  // if CCR0 overflows
+            if(counter < 9){
+                counter++;
+            }
+            else{
+                counter = 0;
+                TA0CTL = MC_0;           //stop timer
+                TA0R = 0;               //reset timer reg contents
+                timerdone = 1;
+            }
                  break;
         default: break;
       }
@@ -249,4 +272,6 @@ __interrupt void USCI_A1_ISR(void)
   default: break;
   }
 }
+
+
 
