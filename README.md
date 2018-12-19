@@ -32,5 +32,5 @@ The SAIF system uses UART serial communication to provide status updates when an
 ## Use
 The system initializses to standby mode, where it is waiting for the PIR sensor to trigger. Once it triggers, the user has 10 secondsto enter the correct combination (1,2,3,1,1) by pressing the 3 buttons on the breadboard. If they fail to enter the correct combination (or any at all), the buzzer will sound for 10 seconds and the word "Intruder" will be sent over UART. After that, the system goes back to standby mode.
 ## Note
-* The code is dependent upon the MSP430F5529.h header file and must e compiler in Code Compose Studio.
+* The code is dependent upon the MSP430F5529.h header file and must be compiled in Code Compose Studio.
 * Code was written in CCS version 8.1.0
