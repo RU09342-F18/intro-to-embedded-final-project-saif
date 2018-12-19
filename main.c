@@ -11,35 +11,31 @@
 
 
 //definitions:
-#define LED BIT0        //defining LED1 as BIT0
-#define BUTTON1 BIT2
-#define BUTTON2 BIT3
-#define BUTTON3 BIT4
-#define BUTTON4 BIT5
-#define TRIGGER BIT0
-#define BUZZER BIT0
-#define CORRECT BIT1
+#define BUTTON1 BIT2    // button1 = 1.2
+#define BUTTON2 BIT3    // button2 = 1.3
+#define BUTTON3 BIT4    // button3 = 1.4
+#define PIR BIT5        // PIR = 1.5
+#define BUZZER BIT0     // buzzer = 3.0
+#define CORRECT BIT1    // status LED = 3.1
 
 //global vars:
-unsigned int done_combination = 0;
-const unsigned int combination_key[5] = {1,2,3,1,1};
-unsigned int combination[5] = {0};
-unsigned int combination_digits_entered = 0;
-unsigned int interrupt_edge[4] = {0};
-unsigned int num_of_interrupts = 0;
-unsigned int triggered = 0;
-unsigned int counter = 0;
-unsigned int timerdone = 1;
+const unsigned int combination_key[5] = {1,2,3,1,1};    // default combination
+unsigned int combination[5] = {0};                      // combination that has been entered
+unsigned int combination_digits_entered = 0;            // number of digits that have been entered thus far
+unsigned int triggered = 0;                             // 1 if PIR has gone off and not reset yet
+unsigned int counter = 0;                               // used for counting number of times timer CCR) has overflowed
+unsigned int timerdone = 1;                             // true if timer has counted for 10 seconds
 
 
 
 //prototypes
-void wifi(int);
+void alert(int);
 
 int main(void)  //begin main function
 {
-    WDTCTL = WDTPW + WDTHOLD;                                   // Stop watchdog timer
+    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
 
+// SET UP UART***********************************************************************************
     P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
     UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
     UCA1CTL1 |= UCSSEL_2;
@@ -49,45 +45,31 @@ int main(void)  //begin main function
     UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
     UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
 
-    //timer initialization************************************************************************
+//SET UP TIMER A1*********************************************************************************
       //using Timer A1
-      TA1CCTL1 = CCIE;                          // CCR interrupt enabled for TA1
-      TA1CCR0 = 62500;                            //Set the period in the Timer A CCR0 to
-      //TA1CCR1 = 131;                            //The initial period in microseconds that the power is ON.
-                                                //It's initialized to half the time, which translates to a 50% duty cycle.
+      TA1CCTL1 = CCIE;                        // CCR interrupt enabled for TA1
+      TA1CCR0 = 62500;                        // Set the period in the Timer A CCR0 to 1 second (note: will be using ID_3)
 
+//SET UP INPUT AND OUTPUT PINS********************************************************************
+// Port 1
+    P1REN |= BUTTON1 + BUTTON2 + BUTTON3 + PIR;             // resistor enable for inputs
+    P1SEL &= ~(BUTTON1 + BUTTON2 + BUTTON3 + PIR);          // set as GPIO
+    P1DIR &= ~(BUTTON1 + BUTTON2 + BUTTON3 + PIR);          // set others as input
+// Port 3
+    P3SEL &= ~(BUZZER + CORRECT);                           // set as GPIO
+    P3DIR |= (BUZZER + CORRECT);                            // Set buzzer and status LED as outputs
+//Initialize
+    P3OUT &= ~(BUZZER + CORRECT);                           //shut off buzzer
+    P1IE |= BUTTON1 + BUTTON2 + BUTTON3 + PIR;              // enable P1.3 interrupt
+//Interrupt handling
+    P1IFG &= ~BUTTON1 + BUTTON2 + BUTTON3 + PIR;            // clear the P1.3 interrupt flag
 
-    P1REN |= BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;
-
-    // IO:
-    P1DIR |= (LED);                                             // Set P1.0 (LED) to be an output
-    P1SEL &= ~(BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4);          //set as GPIO
-    P1DIR &= ~(BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4);          //set as input
-
-    P3DIR |= (BUZZER + CORRECT);                                             // Set P1.0 (LED) to be an output
-    P3SEL &= ~(BUZZER + CORRECT);          //set as GPIO
-
-    P2SEL &= ~(TRIGGER);          //set as GPIO
-    P2DIR &= ~(TRIGGER);          //set as input
-
-    P3OUT &= ~(BUZZER + CORRECT);               //shut off buzzer
-    P1OUT &= ~LED;                                              // shut off LED0
-    P1IE |= BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;              // enable P1.3 interrupt
-    P2IE |= TRIGGER;              // enable P2.0 interrupt
-
-
-    P1IFG &= ~BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4;            // clear the P1.3 interrupt flag
-    P2IFG &= ~TRIGGER;
-
-
-
-    //__delay_cycles(100000);
-    __enable_interrupt();                                       // enable interrupts
+    __enable_interrupt();                                   // enable interrupts
 
 
 }
 
-void wifi(int correct){
+void alert(int correct){
 
     //reset entered combination
     int i;
@@ -95,128 +77,106 @@ void wifi(int correct){
         combination[i] = 0;
     }
 
-    //send notification
-    if(correct == 1){
-        //no intruder
-        P1OUT &= ~LED;
-        correct = 0;
-        P3OUT |= CORRECT;
+    if(correct == 1){       //no intruder
+        correct = 0;        // reset correct bit
+        P3OUT |= CORRECT;   // set status LED high
     }
-    else{
-        //intruder
-        P3OUT &= ~CORRECT;
-        //char message[] = {35, 84, 101, 115, 116, 95, 84, 111, 112, 105, 99, 32, 73, 110, 116, 114, 117, 100, 101, 114, 10, 13};
-        char message[] = {73, 110, 116, 114, 117, 100, 101, 114, 10, 13};
+    else{                   //intruder
+        P3OUT &= ~CORRECT;  // shut off status LED
+        char message[] = {73, 110, 116, 114, 117, 100, 101, 114, 10, 13};   // ascii values of 'Intruder\n'
+        // send message
         int i = 0;
-         unsigned int size = 10;
-         for(i = 0; i < size; i++){
-             while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
-             UCA1TXBUF = message[i];               //send out message
+         unsigned int size = 10;                // 10 ascii values to send
+         for(i = 0; i < size; i++){             //send chars one at a time
+             while (!(UCA1IFG & UCTXIFG));      //wait for TX buffer to be ready
+             UCA1TXBUF = message[i];            //send out char
          }
-         P3OUT |= BUZZER;
+         P3OUT |= BUZZER;                       //turn on buzzer
          i = 0;
-         for(i = 0; i < 10; i++){
-             __delay_cycles(1000000);
+         for(i = 0; i < 10; i++){               //delay for 10 seconds (keep buzzer on this long)
+             __delay_cycles(1000000);           // 1 second delay
          }
-         //TA1CTL = TASSEL_2 + MC_1 + ID_3 + TAIE;   //TASSEL_2 selects SMCLK as the clock source, and MC_1 tells it to count up to the value in TA0CCR0.
-         //timerdone = 0;
-         //while(timerdone == 0); //wait for 10s timer to finish
+
     }
 
-    P3OUT &= ~BUZZER;   //shut off buzzer after sending message of canceling sending message
-    P1IFG &= ~(BUTTON1 + BUTTON2 + BUTTON3 + BUTTON4);
-    triggered = 0;
+    P3OUT &= ~BUZZER;                               //shut off buzzer after sending message or canceling sending message
+    P1IFG &= ~(BUTTON1 + BUTTON2 + BUTTON3 + PIR);  //clear interrupt flags
+    triggered = 0;                                  //device is back in standby mode
 }
 
-/*
-#pragma vector=PORT2_VECTOR
-__interrupt void Port_2(void)   //take care of interrupt coming from port 1
-{
-    triggered = 1;
-    P3OUT |= BUZZER;
-}*/
 
 // Port 1 interrupt service routine
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)   //take care of interrupt coming from port 1
 {
 
-
-    //6: 1.2, 8:1.3, A:1.4, C:1.5
-    __delay_cycles(2000);
-    /*++num_of_interrupts;
-    if(num_of_interrupts > 1){*/
+    __delay_cycles(2000);                                   // small delay for debouncing
 
     switch(P1IV){
-    case 0x000C:
-        P1IE &= ~BUTTON4;                     //disable port 1 interrupts (button won't cause interrupt)
-        P1IFG &= ~BUTTON4;
-        //if((P1IN & BUTTON4) == 0x00)
-            //combination[combination_digits_entered] = 4;
-        triggered = 1;
-        __delay_cycles(300000);
- //       P1IES ^= BUTTON4;                // toggle the interrupt edge
-        P1IE |= BUTTON4;         //reenable port 1 interrupts, so button can be read again
+    case 0x000C:                                            // if PIR is triggered*****************************************************
+        P1IE &= ~PIR;                                       // disable port 1 interrupts (button won't cause interrupt; for debouncing)
+        P1IFG &= ~PIR;                                      // clear interrput flag
+        triggered = 1;                                      // PIR has been triggered
+        __delay_cycles(300000);                             // delay for debouncing
+        P1IE |= PIR;                                        // reenable port 1 interrupts, so buttons can be read again
         break;
-    case 0x000A:
-        if(triggered ==1){
-        P1IE &= ~BUTTON3;                     //disable port 1 interrupts (button won't cause interrupt)
-        P1IFG &= ~BUTTON3;
-        //if((P1IN & BUTTON3) == 0x00)
-            combination[combination_digits_entered] = 3;
-        __delay_cycles(300000);
-        P1IE |= BUTTON3;         //reenable port 1 interrupts, so button can be read again
-//        P1IES ^= BUTTON3;                // toggle the interrupt edge
-        break;}
-    case 0x0008:
-        if(triggered == 1){
-        P1IE &= ~BUTTON2;                     //disable port 1 interrupts (button won't cause interrupt)
-        P1IFG &= ~BUTTON2;
-        //if((P1IN & BUTTON2) == 0x00)
-            combination[combination_digits_entered] = 2;
-        __delay_cycles(300000);
-        P1IE |= BUTTON2;         //reenable port 1 interrupts, so button can be read again
-//        P1IES ^= BUTTON2;                // toggle the interrupt edge
-        break;}
-    case 0x0006:
-        if(triggered == 1){
-       P1IE &= ~BUTTON1;                     //disable port 1 interrupts (button won't cause interrupt)
-       P1IFG &= ~BUTTON1;
-       //if((P1IN & BUTTON1) == 0x00)
-           combination[combination_digits_entered] = 1;
-//       P1IES ^= BUTTON1;                // toggle the interrupt edge
-       __delay_cycles(300000);
-       P1IE |= BUTTON1;         //reenable port 1 interrupts, so button can be read again
-       break;}
+    case 0x000A:                                            // BUTTON3 has triggered****************************************************
+        if(triggered ==1){                                  // only read button if PIR has triggered
+            P1IE &= ~BUTTON3;                               // disable port 1 interrupts (button won't cause interrupt; for debouncing)
+            P1IFG &= ~BUTTON3;                              // clear interrput flag
+            combination[combination_digits_entered] = 3;    // record number for combination
+            __delay_cycles(300000);                         // delay for debouncing
+            P1IE |= BUTTON3;                                // reenable port 1 interrupts, so button can be read again
+        }
+        break;
+    case 0x0008:                                            // BUTTON2 has triggered****************************************************
+        if(triggered == 1){                                 // only read button if PIR has triggered
+            P1IE &= ~BUTTON2;                               // disable port 1 interrupts (button won't cause interrupt; for debouncing)
+            P1IFG &= ~BUTTON2;                              // clear interrput flag
+            combination[combination_digits_entered] = 2;    // record number for combination
+            __delay_cycles(300000);                         // delay for debouncing
+            P1IE |= BUTTON2;                                // reenable port 1 interrupts, so button can be read again
+        }
+        break;
+    case 0x0006:                                            // BUTTON1 has triggered****************************************************
+        if(triggered == 1){                                 // only read button if PIR has triggered
+            P1IE &= ~BUTTON1;                               // disable port 1 interrupts (button won't cause interrupt; for debouncing)
+            P1IFG &= ~BUTTON1;                              // clear interrput flag
+            combination[combination_digits_entered] = 1;    // record number for combination
+            __delay_cycles(300000);                         // delay for debouncing
+            P1IE |= BUTTON1;                                // reenable port 1 interrupts, so button can be read again
+        }
+       break;
     default: break;
     }
 
-    __delay_cycles(300000);
+    __delay_cycles(300000);                                 // more delays for debouncing
 
-    unsigned int digits_correct = 0;
+    unsigned int digits_correct = 0;                        // initialie nubmer of correct digits to 0
 
+    // if PIR has triggered AND PIR is not the current interrupt AND an actual combination digit has been recorded, increment number of digits entered
     if(triggered == 1 && P1IV != 0x000C && combination[combination_digits_entered] != 0)
         ++combination_digits_entered;
 
-    if(combination_digits_entered == 5){
-        triggered = 0;
-        int correct = 0;
+    if(combination_digits_entered == 5){                    // if all 5 digits have been entered
+        triggered = 0;                                      // triggered set back to 0 (getting ready to go back to standby
+        int correct = 0;                                    // initialize number of digits correct
         unsigned int i;
-        for(i = 0; i < 5; ++i){
-            if(combination_key[i] == combination[i])
+        for(i = 0; i < 5; ++i){                             //check all 5 entered digits against the key
+            if(combination_key[i] == combination[i])        // if this digit is correct, increment digits_correct
                 ++digits_correct;
 
-            if(digits_correct == 5) //if we get this far, all values matched
-                correct = 1;
-
+            if(digits_correct == 5)                         // if we get this far, all values matched
+                correct = 1;                                // correct is true
         }
-        combination_digits_entered = 0;
-        wifi(correct);
+        combination_digits_entered = 0;                     // reset digits entered to 0
+        alert(correct);                                     // call on message to decide what to do now that user has entered combination
     }
 
 }
 
-    //Timer Interrupt
+// Timer Interrupt
+// used for counting to 10
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector=TIMER1_A1_VECTOR
 __interrupt void TIMER1_A1_ISR(void)
@@ -236,25 +196,27 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
         case  8: break;                          // reserved
         case 10: break;                          // reserved
         case 12: break;                          // reserved
-        case 14:                  // if CCR0 overflows
-            if(counter < 9){
+        case 14:                    // if CCR0 overflows
+            if(counter < 9){        // want CCR0 to overflow 9 times in order to reach 10 seconds
                 counter++;
             }
-            else{
-                counter = 0;
-                TA0CTL = MC_0;           //stop timer
-                TA0R = 0;               //reset timer reg contents
-                timerdone = 1;
+        else{                       // if 10 seconds have passed (1 overflow per second)
+                counter = 0;        // reset number of overflows to 0
+                TA0CTL = MC_0;      // stop timer
+                TA0R = 0;           // reset timer reg contents
+                timerdone = 1;      // timer is done
             }
                  break;
         default: break;
       }
-      TA1IV &= ~TA1IV_TA1IFG; // Clear the Timer interrupt Flag
+      TA1IV &= ~TA1IV_TA1IFG;       // Clear the Timer interrupt Flag
     }
 
 
+//For testing UART connectivity, uncomment the following lines:
+/*
 // Echo back RXed character, confirm TX buffer is ready first
-//UART interrupt
+// UART interrupt
 #pragma vector=USCI_A1_VECTOR
 __interrupt void USCI_A1_ISR(void)
 
@@ -272,7 +234,7 @@ __interrupt void USCI_A1_ISR(void)
 
   default: break;
   }
-}
+}*/
 
 
 
