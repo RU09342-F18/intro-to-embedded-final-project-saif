@@ -13,7 +13,7 @@ The SAIF system acts as a motion sensor that can be implemented as a security sy
 * 1.1 k<TD>&Omega;</TD> Resistor (x4)
 * 270 <TD>&Omega;</TD> Resistor
 1 nF Bulk Capacitor
-## Ports
+### Ports
 * 1.2: button 1
 * 1.3: button 2
 * 1.4: button 3
