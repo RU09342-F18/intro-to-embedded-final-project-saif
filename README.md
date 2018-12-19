@@ -10,5 +10,5 @@ The SAIF system acts as a motion sensor that can be implemented as a security sy
 * PIR Sensor
 * Buzzer
 * NMOS
-* 1.1 k	#937
+* 1.1 k<TD>= &Omega;</TD>
 
