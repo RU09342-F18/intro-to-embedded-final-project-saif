@@ -1,7 +1,7 @@
 # SAIF: Security at its Finest
 Developed by David Sheppard<br>
 Created: December 10, 2018<br>
-Last Modified: December 18, 2018
+Last Modified: December 18, 2018 (commented and cleaned up code)
 ## Purpose
 The SAIF system acts as a motion sensor that can be implemented as a security system. When the motion sensor is triggered, the users has 10 seconds to enter the correct combination on the buttons before a buzzer goes off and an intruer alert is sent via UART.
 ## Setup
