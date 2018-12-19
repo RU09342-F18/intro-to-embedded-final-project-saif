@@ -21,12 +21,12 @@ The SAIF system acts as a motion sensor that can be implemented as a security sy
 * 3.0: status LED (on when combination entered is correct)
 * 3.1: Buzzer NMOS control
 ### Circuit Setup
-The entrie system can be implemented on a breadbaord with a 3.3 VDC pwer supply. The schematic for setup is shown below.
+The entrie system can be implemented on a breadboard with a 3.3 VDC pwer supply. The schematic for setup is shown below.
 <img src="schematic.png" width="597" height="645">
 ### UART Setup
 Basics:
 * 115200 baud rate
-* Set terminal to display in ASCII
+* Set terminal to display in ASCII<br>
 Specifics:<br>
 The SAIF system uses UART serial communication to provide status updates when an intrusion is detected. To read this information on a PC, Realterm (or a comparable terminal program) must be installed. The terminal must be set to receive information from the correct COM port. To determine the correct COM port, open the computer’s device manager and look for the category "Ports (COM & LPT)." Click the dropdown menu to view all ports and find the one that says "MSP Application UART1 (COMX)," where "X" is the COM port number. This is the number that must be entered in Realterm under the Port tab. The baud rate must also be set to 115200 before clicking "Change" and "Open" on the terminal. Additionally, the display setting under the "Display" tab should be set to "Display as ASCII" in order to properly read in the information.
 ## Use
