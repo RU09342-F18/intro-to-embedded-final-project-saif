@@ -1,11 +1,41 @@
-
-//Taken from: http://processors.wiki.ti.com/index.php/MSP430_LaunchPad_PushButton
-//comments have been modified
-
-//David Sheppard
-
-//Final Project
-
+/*
+* SAIF (Security at its Finest) Final Project for Intro to Embedded Systems
+*   Written by: David Sheppard
+*   Some code based on samples taken from the TI Resource Explorer (See disclaimer at end of code)
+*
+* Created: 10 December 2018
+* Last Updated: 18 December 2018 (commented and cleaned up code)
+*
+* Purpose: The SAIF system acts as a motion sensor that can be implemented as a security system.
+* When the motion sensor is triggered, the users has 10 seconds to enter the correct combination on the buttons
+* before a buzzer goes off and an intruder alert is sent via UART.
+*
+* Basic Components:
+*   PIR: detects motion
+*   Buzzer: sounds alarm
+*   3 Buttons: act as keypad for entering combination
+*   Status LED: comes on if combination is correct
+*   UART Connection: prints intruder alert if combination is incorrect or timer counts to 10 seconds
+*   Timer: gives the user 10 seconds to enter a combination and times buzzer for 10 seconds
+*
+* Ports:
+*
+*   Port | Use
+*   ---------------------
+*    1.2 | button 1
+*    1.3 | button 2
+*    1.4 | button 3
+*    1.5 | output of PIR
+*    3.0 | buzzer control
+*    3.1 | status LED
+*
+* Notes:
+*   115200 baud rate
+*   dependent upon msp430f5529.h header file
+*   should be compied in Code Composer Studio
+*   written in CCS 8.1.0
+*
+*/
 
 #include <msp430f5529.h>
 
@@ -29,9 +59,9 @@ unsigned int timerdone = 1;                             // true if timer has cou
 
 
 //prototypes
-void alert(int);
+void alert(int);    //for acting upon results of combination
 
-int main(void)  //begin main function
+int main(void)                                //begin main function
 {
     WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
 
@@ -46,7 +76,6 @@ int main(void)  //begin main function
     UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
 
 //SET UP TIMER A1*********************************************************************************
-      //using Timer A1
       TA1CCTL1 = CCIE;                        // CCR interrupt enabled for TA1
       TA1CCR0 = 62500;                        // Set the period in the Timer A CCR0 to 1 second (note: will be using ID_3)
 
@@ -58,12 +87,11 @@ int main(void)  //begin main function
 // Port 3
     P3SEL &= ~(BUZZER + CORRECT);                           // set as GPIO
     P3DIR |= (BUZZER + CORRECT);                            // Set buzzer and status LED as outputs
-//Initialize
+//Initialize values
     P3OUT &= ~(BUZZER + CORRECT);                           //shut off buzzer
     P1IE |= BUTTON1 + BUTTON2 + BUTTON3 + PIR;              // enable P1.3 interrupt
 //Interrupt handling
     P1IFG &= ~BUTTON1 + BUTTON2 + BUTTON3 + PIR;            // clear the P1.3 interrupt flag
-
     __enable_interrupt();                                   // enable interrupts
 
 
@@ -77,25 +105,26 @@ void alert(int correct){
         combination[i] = 0;
     }
 
-    if(correct == 1){       //no intruder
-        correct = 0;        // reset correct bit
-        P3OUT |= CORRECT;   // set status LED high
+    if(correct == 1){                           //no intruder
+        correct = 0;                            // reset correct bit
+        P3OUT |= CORRECT;                       // set status LED high
     }
-    else{                   //intruder
-        P3OUT &= ~CORRECT;  // shut off status LED
+    else{                                       //intruder
+        P3OUT &= ~CORRECT;                      // shut off status LED
+        //initialize message:
         char message[] = {73, 110, 116, 114, 117, 100, 101, 114, 10, 13};   // ascii values of 'Intruder\n'
-        // send message
+        // send message:
         int i = 0;
-         unsigned int size = 10;                // 10 ascii values to send
-         for(i = 0; i < size; i++){             //send chars one at a time
-             while (!(UCA1IFG & UCTXIFG));      //wait for TX buffer to be ready
-             UCA1TXBUF = message[i];            //send out char
-         }
-         P3OUT |= BUZZER;                       //turn on buzzer
-         i = 0;
-         for(i = 0; i < 10; i++){               //delay for 10 seconds (keep buzzer on this long)
-             __delay_cycles(1000000);           // 1 second delay
-         }
+        const unsigned int size = 10;           // 10 ascii values to send
+        for(i = 0; i < size; i++){              //send chars one at a time
+            while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
+            UCA1TXBUF = message[i];             //send out char
+        }
+        P3OUT |= BUZZER;                        //turn on buzzer
+        i = 0;
+        for(i = 0; i < 10; i++){                //delay for 10 seconds (keep buzzer on this long)
+            __delay_cycles(1000000);            // 1 second delay
+        }
 
     }
 
@@ -105,7 +134,7 @@ void alert(int correct){
 }
 
 
-// Port 1 interrupt service routine
+// Port 1 interrupt service routine (for buttons and PIR inputs)
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)   //take care of interrupt coming from port 1
 {
@@ -148,7 +177,7 @@ __interrupt void Port_1(void)   //take care of interrupt coming from port 1
         }
        break;
     default: break;
-    }
+    }                                                       // end switch(P1IV)
 
     __delay_cycles(300000);                                 // more delays for debouncing
 
@@ -168,10 +197,10 @@ __interrupt void Port_1(void)   //take care of interrupt coming from port 1
 
             if(digits_correct == 5)                         // if we get this far, all values matched
                 correct = 1;                                // correct is true
-        }
+        }                                                   // end testing combination
         combination_digits_entered = 0;                     // reset digits entered to 0
         alert(correct);                                     // call on message to decide what to do now that user has entered combination
-    }
+    }                                                       //end if(combination_digits_entered == 5)
 
 }
 
@@ -213,7 +242,9 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
     }
 
 
-//For testing UART connectivity, uncomment the following lines:
+
+// To test UART connectivity, uncomment the following block:
+
 /*
 // Echo back RXed character, confirm TX buffer is ready first
 // UART interrupt
@@ -238,3 +269,73 @@ __interrupt void USCI_A1_ISR(void)
 
 
 
+
+
+/* --COPYRIGHT--,BSD_EX
+ * Copyright (c) 2012, Texas Instruments Incorporated
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * *  Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * *  Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * *  Neither the name of Texas Instruments Incorporated nor the names of
+ *    its contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *******************************************************************************
+ *
+ *                       MSP430 CODE EXAMPLE DISCLAIMER
+ *
+ * MSP430 code examples are self-contained low-level programs that typically
+ * demonstrate a single peripheral function or device feature in a highly
+ * concise manner. For this the code may rely on the device's power-on default
+ * register values and settings such as the clock configuration and care must
+ * be taken when combining code from several examples to avoid potential side
+ * effects. Also see www.ti.com/grace for a GUI- and www.ti.com/msp430ware
+ * for an API functional library-approach to peripheral configuration.
+ *
+ * --/COPYRIGHT--*/
+//******************************************************************************
+//   MSP430F552x Demo - USCI_A0, 115200 UART Echo ISR, DCO SMCLK
+//
+//   Description: Echo a received character, RX ISR used. Normal mode is LPM0.
+//   USCI_A0 RX interrupt triggers TX Echo.
+//   Baud rate divider with 1048576hz = 1048576/115200 = ~9.1 (009h|01h)
+//   ACLK = REFO = ~32768Hz, MCLK = SMCLK = default DCO = 32 x ACLK = 1048576Hz
+//   See User Guide for baud rate divider table
+//
+//                 MSP430F552x
+//             -----------------
+//         /|\|                 |
+//          | |                 |
+//          --|RST              |
+//            |                 |
+//            |     P3.3/UCA0TXD|------------>
+//            |                 | 115200 - 8N1
+//            |     P3.4/UCA0RXD|<------------
+//
+//   Bhargavi Nisarga
+//   Texas Instruments Inc.
+//   April 2009
+//   Built with CCSv4 and IAR Embedded Workbench Version: 4.21
+//******************************************************************************
